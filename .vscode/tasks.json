@@ -1,0 +1,37 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile NASM",
+            "type": "shell",
+            "command": "nasm",
+            "args": [
+                "-f", "win64", 
+                "HelloWorld.asm", 
+                "-o", "HelloWorld.obj"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Link EXE",
+            "type": "shell",
+            "command": "link",
+            "args": [
+                "/entry:main",
+                "/subsystem:windows",
+                "HelloWorld.obj",
+                "user32.lib",
+                "kernel32.lib"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": []
+        }
+    ]
+}
