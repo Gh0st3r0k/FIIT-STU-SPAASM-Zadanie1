@@ -4,7 +4,7 @@ section .bss
     global flag_r, flag_h  ; Флаги -r и -h
 
     fd          resq 1
-    num_line    resq 1
+    ;num_line    resq 1
 
     digit_counts resq 100
     lower_counts resq 100
@@ -24,6 +24,7 @@ extern digit_count, lower_count, upper_count, other_count
 extern strlen
 
 print_args:
+
     push rbp
     mov rbp, rsp
 
@@ -79,6 +80,7 @@ print_args:
 
 .skip_print:
     dec rcx
+    ;mov rbx, rsi
     jmp .next_arg
 
 
@@ -121,7 +123,7 @@ print_args:
 process_file:
     push rbp
     mov rbp, rsp
-    sub rsp, 32
+    sub rsp, 16
 
     ; Выводим имя файла перед открытием (ОТЛАДКА)
     mov rdi, rsi
@@ -129,7 +131,7 @@ process_file:
     call print_new_line
     ;mov rsi, msg_newline
     ;call print_message
-    ;mov rsi, rdi
+    ;mov rsi, rdi  
 
     ; Открываем файл на чтение
     mov rdi, rsi  ; Имя файла уже в rsi
@@ -154,12 +156,90 @@ process_file:
     jmp .exit
 
 .success:
+    push rbx
+
     mov rsi, msg_file_found
     call print_message  ; Выводим "Файл найден"
 
+    ;mov qword [num_line], 0  ; Номер строки = 0
+
+.read_loop:
+    ; Читаем из файла в buffer
+    mov rdi, [fd]
+    mov rsi, buffer
+    mov rdx, 396
+    mov rax, 0
+    syscall
+    cmp rax, 0
+    jle .close_file  ; Если конец файла, закрываем
+
+    mov rsi, buffer
+    mov rbx, rsi  ; rbx = начало строки
+
+.next_char:
+    mov al, [rsi]
+    cmp al, 0
+    je .done_processing  ; Если дошли до конца буфера, выходим
+
+    cmp al, 10  ; '\n' (конец строки?)
+    je .print_line
+
+    inc rsi
+    jmp .next_char
+
+.print_line:
+
+    push rsi
+    mov byte [rsi], 0  ; Заменяем '\n' на 0 (конец строки)
+
+
+
+    ; Выводим "Номер строки: строка"
+    mov rsi, msg_line_num
+    call print_message
+
+    mov rdi, [num_line]  ; ✅ Выводим номер строки
+    call print_number
+
+    mov rsi, msg_colon
+    call print_message
+
+    mov rsi, rbx   ; ✅ Выводим саму строку
+    call print_message
+
+    call print_new_line  ; ✅ Добавляем новую строку
+
+    inc qword [num_line]  ; ✅ Увеличиваем номер строки
+    pop rsi
+.next_line:
+    inc rsi           ; ✅ Двигаемся вперёд
+    cmp byte [rsi], 0 ; ✅ Пока `rsi` указывает на `\0`
+    je .next_line     ; ✅ Пропускаем все `\0`
+
+    test rsi, rsi
+    jz .done_processing  ; ✅ Если `rsi == 0`, значит файл закончился
+
+    mov rbx, rsi  ; ✅ Обновляем начало новой строки
+    jmp .next_char
+
+.done_processing:
+    jmp .read_loop  ; ✅ Читаем следующий кусок данных
+
+.close_file:
+    mov rdi, [fd]
+    mov rax, 3
+    syscall
+
 .exit:
-    add rsp, 32
-    pop rbp
+    mov rsi, msg_exit_process
+    call print_message
+
+    pop rbx
+
+
+    leave
+    ;add rsp, 32
+    ;pop rbp
     ret
 
 
@@ -175,7 +255,7 @@ print_results:
     mov rcx, 0
 
 .loop:
-    cmp rcx, [num_line]
+    ; cmp rcx, [num_line]
     jge .done
 
     mov rdi, rcx
@@ -227,3 +307,6 @@ section .data
     msg_user db "Золотая чаша, золотааааааяяяяя", 0x0A, 0
     msg_line_num db "Номер строки: ", 0
     msg_colon db ": ", 0
+    msg_debug db "🛠 Вызов print_line", 0x0A, 0  ; 🛠 Отладочный вывод
+    num_line dq 0
+    msg_exit_process db "Выход из process_file", 0x0A, 0
