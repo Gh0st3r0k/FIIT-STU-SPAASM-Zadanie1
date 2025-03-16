@@ -7,23 +7,24 @@ section .bss
 
 section .text
 global analyze_line
-extern buffer
+extern print_message, buffer
 
 analyze_line:
     push rbp
     mov rbp, rsp
 
+    ; Обнуляем счётчики перед каждой строкой
     mov qword [digit_count], 0
     mov qword [lower_count], 0
     mov qword [upper_count], 0
     mov qword [other_count], 0
 
-    mov rsi, buffer
+    mov rsi, buffer  ; Указатель на начало строки
 
 .loop:
     mov al, [rsi]
     test al, al
-    jz .done
+    jz .done         ; Конец строки -> выходим
 
     cmp al, '0'
     jl .check_lower
@@ -53,6 +54,8 @@ analyze_line:
 
 .next:
     inc rsi
+    mov rdi, rsi
+    call print_message   ; <-- Выводим каждый символ
     jmp .loop
 
 .done:
