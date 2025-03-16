@@ -1,22 +1,17 @@
 section .text
 global _start
-extern print_args   ; print_args будет определена в другом файле (lib.asm)
-
-; Входная точка (т.к. мы линкуем без стандартных библиотек):
-; По соглашению Linux при запуске процесса в стеке лежат:
-;   [ argc | argv[0] | argv[1] | ... | argv[argc-1] | 0 | envp[0] ... ]
-; Первая pop снимает argc, в rsi кладём указатель на argv[0].
-; Затем вызываем print_args(rdi=argc, rsi=argv).
+extern print_args, process_file, print_results
 
 _start:
-    ; Забираем argc
-    pop rdi
-    ; Указатель на argv
-    mov rsi, rsp
+    pop rdi          ; argc
+    mov rsi, rsp     ; argv
+    call print_args  ; Разбираем аргументы
 
-    call print_args
+    call process_file  ; Обрабатываем файл
 
-    ; Выходим через sys_exit(0)
-    mov rax, 60       ; номер системного вызова exit
-    xor rdi, rdi      ; код возврата = 0
+    ; call print_flags  Выводим состояние флагов
+    call print_results ; Выводим статистику строк
+
+    mov rax, 60      ; sys_exit
+    xor rdi, rdi
     syscall
