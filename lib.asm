@@ -13,6 +13,7 @@ section .bss
 
     flag_r  resb 1  ; Флаг -r
     flag_h  resb 1  ; Флаг -h
+    flag_p resb 1  ; ✅ Флаг постраничного вывода
 
     global buffer
     buffer resb 396
@@ -56,6 +57,8 @@ print_args:
     je .set_r_flag
     cmp byte [rdi], 'h'
     je .set_h_flag
+    cmp byte [rdi], 'p'
+    je .set_p_flag
     jmp .skip_print
 
 .set_r_flag:
@@ -64,12 +67,23 @@ print_args:
 
 .set_h_flag:
     mov byte [flag_h], 1
+    jmp .help_message
+
+.set_p_flag:
+    mov byte [flag_p], 1
     jmp .skip_print
 
 .process_file:
     mov rsi, rax  ; Передаём имя файла в rsi
     call process_file  ; Обрабатываем файл
     jmp .skip_print
+
+.help_message:
+    mov rsi, msg_help  ; ✅ Выводим help
+    call print_message
+    mov rax, 60        ; ✅ sys_exit
+    xor rdi, rdi
+    syscall            ; ✅ Завершаем программу
 
 .done:
     jmp .print_flags
@@ -278,9 +292,18 @@ print_results:
     mov rbp, rsp
     sub rsp, 16
 
+    mov r8, 0
+
+    cmp byte [flag_h], 1
+    je .done
+
+    cmp byte [flag_r], 1
+    je .reverse_order
+
+.forward_order:
     mov rcx, 0
 
-.loop:
+.forward_loop:
     cmp rcx, [num_line]  ; ✅ Проверяем, не вышли ли за число строк
     jge .done
 
@@ -339,7 +362,123 @@ print_results:
     pop rcx
 
     inc rcx
-    jmp .loop
+    inc r8
+
+    cmp byte [flag_p], 1
+    jne .forward_loop
+
+    cmp rcx, [num_line]  ; ✅ Проверяем, не вышли ли за число строк
+    jge .done
+
+    cmp r8, 10
+    jne .forward_loop
+
+    push rcx
+    mov rsi, msg_press_enter
+    call print_message
+    pop rcx
+
+    push rcx
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, buffer
+    mov rdx, 1
+    syscall
+    pop rcx
+
+    mov r8, 0
+
+    jmp .forward_loop
+
+
+.reverse_order:
+    mov rcx, [num_line]
+    dec rcx
+
+.reverse_loop:
+    cmp rcx, -1  ; ✅ Проверяем, не вышли ли за число строк
+    jle .done
+
+    push rcx
+    ; ✅ Выводим "Номер строки %d:"
+    mov rsi, msg_line_num
+    call print_message
+    pop rcx
+    push rcx
+    mov rdi, rcx
+    inc rdi  ; ✅ Нумерация строк с 1
+    call print_number
+    pop rcx
+
+    push rcx
+    ; ✅ Выводим "Цифры = %d,"
+    mov rsi, msg_digits
+    call print_message
+    pop rcx
+    push rcx
+    mov rdi, [digit_counts + rcx * 8]
+    call print_number
+    pop rcx
+    push rcx
+    ; ✅ Выводим "строчные = %d,"
+    mov rsi, msg_lower
+    call print_message
+    pop rcx
+    push rcx
+    mov rdi, [lower_counts + rcx * 8]
+    call print_number
+    pop rcx
+
+    push rcx
+    ; ✅ Выводим "заглавные = %d,"
+    mov rsi, msg_upper
+    call print_message
+    pop rcx
+    push rcx
+    mov rdi, [upper_counts + rcx * 8]
+    call print_number
+    pop rcx
+
+    push rcx
+    ; ✅ Выводим "другие = %d"
+    mov rsi, msg_other
+    call print_message
+    pop rcx
+    push rcx
+    mov rdi, [other_counts + rcx * 8]
+    call print_number
+
+    call print_new_line  ; ✅ Переход на новую строку
+
+    pop rcx 
+    dec rcx
+    inc r8
+
+    cmp byte [flag_p], 1
+    jne .reverse_loop
+
+    cmp rcx, -1  ; ✅ Проверяем, не вышли ли за число строк
+    jle .done
+
+    cmp r8, 10
+    jne .reverse_loop
+
+    push rcx
+    mov rsi, msg_press_enter
+    call print_message
+    pop rcx
+
+    push rcx
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, buffer
+    mov rdx, 1
+    syscall
+    pop rcx
+
+    mov r8, 0
+
+    jmp .reverse_loop
 
 .done:
     add rsp, 16
@@ -368,3 +507,8 @@ section .data
     msg_debug db "🛠 Вызов print_line", 0x0A, 0  ; 🛠 Отладочный вывод
     num_line dq 0
     msg_exit_process db "Выход из process_file", 0x0A, 0
+    msg_press_enter db "Нажмите Enter для продолжения...", 0x0A, 0
+    msg_help db "Использование: program [флаги] file.txt", 0x0A
+         db "-r  : Вывод строк в обратном порядке", 0x0A
+         db "-p  : Постраничный вывод (по 10 строк)", 0x0A
+         db "-h  : Показать справку и выйти", 0x0A, 0
