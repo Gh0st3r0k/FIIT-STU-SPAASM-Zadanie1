@@ -7,7 +7,6 @@ section .bss
 
 section .text
 global analyze_line
-extern print_message, buffer
 
 analyze_line:
     push rbp
@@ -18,8 +17,6 @@ analyze_line:
     mov qword [lower_count], 0
     mov qword [upper_count], 0
     mov qword [other_count], 0
-
-    mov rsi, buffer  ; Указатель на начало строки
 
 .loop:
     mov al, [rsi]
@@ -54,8 +51,6 @@ analyze_line:
 
 .next:
     inc rsi
-    mov rdi, rsi
-    call print_message   ; <-- Выводим каждый символ
     jmp .loop
 
 .done:

@@ -6,10 +6,10 @@ section .bss
     fd          resq 1
     ;num_line    resq 1
 
-    digit_counts resq 100
-    lower_counts resq 100
-    upper_counts resq 100
-    other_counts resq 100
+    digit_counts resq 255
+    lower_counts resq 255
+    upper_counts resq 255
+    other_counts resq 255
 
     flag_r  resb 1  ; Флаг -r
     flag_h  resb 1  ; Флаг -h
@@ -192,6 +192,19 @@ process_file:
     push rsi
     mov byte [rsi], 0  ; Заменяем '\n' на 0 (конец строки)
 
+    mov rsi, rbx
+    call analyze_line
+
+    mov rdi, [num_line]
+    mov rdx, qword [digit_count]
+    mov rcx, qword [lower_count]
+    mov r8,  qword [upper_count]
+    mov r9,  qword [other_count]
+
+    mov [digit_counts + rdi*8], rdx
+    mov [lower_counts + rdi*8], rcx
+    mov [upper_counts + rdi*8], r8
+    mov [other_counts + rdi*8], r9
 
 
     ; Выводим "Номер строки: строка"
@@ -201,11 +214,25 @@ process_file:
     mov rdi, [num_line]  ; ✅ Выводим номер строки
     call print_number
 
-    mov rsi, msg_colon
+    mov rsi, msg_digits
     call print_message
+    mov edi, [digit_count]
+    call print_number
 
-    mov rsi, rbx   ; ✅ Выводим саму строку
+    mov rsi, msg_lower
     call print_message
+    mov rdi, [lower_count]
+    call print_number
+
+    mov rsi, msg_upper
+    call print_message
+    mov rdi, [upper_count]
+    call print_number
+
+    mov rsi, msg_other
+    call print_message
+    mov rdi, [other_count]
+    call print_number
 
     call print_new_line  ; ✅ Добавляем новую строку
 
@@ -246,7 +273,6 @@ process_file:
 
 
 
-
 print_results:
     push rbp
     mov rbp, rsp
@@ -255,32 +281,62 @@ print_results:
     mov rcx, 0
 
 .loop:
-    ; cmp rcx, [num_line]
+    cmp rcx, [num_line]  ; ✅ Проверяем, не вышли ли за число строк
     jge .done
 
+    push rcx
+    ; ✅ Выводим "Номер строки %d:"
+    mov rsi, msg_line_num
+    call print_message
+    pop rcx
+    push rcx
     mov rdi, rcx
-    inc rdi
+    inc rdi  ; ✅ Нумерация строк с 1
     call print_number
+    pop rcx
 
+    push rcx
+    ; ✅ Выводим "Цифры = %d,"
     mov rsi, msg_digits
     call print_message
+    pop rcx
+    push rcx
     mov rdi, [digit_counts + rcx * 8]
     call print_number
+    pop rcx
 
+    push rcx
+    ; ✅ Выводим "строчные = %d,"
     mov rsi, msg_lower
     call print_message
+    pop rcx
+    push rcx
     mov rdi, [lower_counts + rcx * 8]
     call print_number
+    pop rcx
 
+    push rcx
+    ; ✅ Выводим "заглавные = %d,"
     mov rsi, msg_upper
     call print_message
+    pop rcx
+    push rcx
     mov rdi, [upper_counts + rcx * 8]
     call print_number
+    pop rcx
 
+    push rcx
+    ; ✅ Выводим "другие = %d"
     mov rsi, msg_other
     call print_message
+    pop rcx
+    push rcx
     mov rdi, [other_counts + rcx * 8]
     call print_number
+
+    call print_new_line  ; ✅ Переход на новую строку
+
+    pop rcx
 
     inc rcx
     jmp .loop
@@ -289,6 +345,8 @@ print_results:
     add rsp, 16
     pop rbp
     ret
+
+
 
 section .data
     newline db 0x0A
