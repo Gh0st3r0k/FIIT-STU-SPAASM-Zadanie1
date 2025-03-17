@@ -6,17 +6,17 @@ section .bss
     fd          resq 1
     ;num_line    resq 1
 
-    digit_counts resq 255
-    lower_counts resq 255
-    upper_counts resq 255
-    other_counts resq 255
+    digit_counts resq 4096
+    lower_counts resq 4096
+    upper_counts resq 4096
+    other_counts resq 4096
 
     flag_r  resb 1  ; Флаг -r
     flag_h  resb 1  ; Флаг -h
     flag_p resb 1  ; ✅ Флаг постраничного вывода
 
     global buffer
-    buffer resb 396
+    buffer resb 4096
 
 section .text
 global print_args, process_file, print_flags, print_results
@@ -49,8 +49,6 @@ print_args:
     cmp dl, '-'    ; Проверяем, является ли аргумент флагом
     jne .process_file  ; Если нет, значит, это имя файла
 
-    ;mov rsi, msg_user
-    ;call print_message
 
     add rdi, 1
     cmp byte [rdi], 'r'
@@ -112,7 +110,7 @@ print_args:
     mov rsi, msg_r_set
 
 .print_flag_res:
-    call print_message
+    ;call print_message
 
     ; Проверяем флаг -h (только один раз!)
     mov al, [flag_h]
@@ -125,11 +123,8 @@ print_args:
     mov rsi, msg_h_set
 
 .done_flags:
-    call print_message
-
-    mov rsi, msg_end
-    call print_message
-
+    ;call print_message
+    
     pop rbp   ; <-- ЧЁТКО ВОССТАНАВЛИВАЕМ СТЕК
     ret       ; <-- ТЕПЕРЬ НЕ УПАДЁТ
 
@@ -140,9 +135,9 @@ process_file:
     sub rsp, 16
 
     ; Выводим имя файла перед открытием (ОТЛАДКА)
-    mov rdi, rsi
-    call print_message
-    call print_new_line
+    ;mov rdi, rsi
+    ;call print_message
+    ;call print_new_line
     ;mov rsi, msg_newline
     ;call print_message
     ;mov rsi, rdi  
@@ -165,6 +160,7 @@ process_file:
     call print_message
     mov rdi, rax  ; Код ошибки
     call print_number  ; Выведем его
+    call print_new_line
     mov rsi, msg_file_error
     call print_message
     jmp .exit
@@ -172,8 +168,8 @@ process_file:
 .success:
     push rbx
 
-    mov rsi, msg_file_found
-    call print_message  ; Выводим "Файл найден"
+    ;mov rsi, msg_file_found
+    ;call print_message  ; Выводим "Файл найден"
 
     ;mov qword [num_line], 0  ; Номер строки = 0
 
@@ -222,33 +218,33 @@ process_file:
 
 
     ; Выводим "Номер строки: строка"
-    mov rsi, msg_line_num
-    call print_message
+    ;mov rsi, msg_line_num
+    ;call print_message
 
-    mov rdi, [num_line]  ; ✅ Выводим номер строки
-    call print_number
+    ;mov rdi, [num_line]  ; ✅ Выводим номер строки
+    ;call print_number
 
-    mov rsi, msg_digits
-    call print_message
-    mov edi, [digit_count]
-    call print_number
+    ;mov rsi, msg_digits
+    ;call print_message
+    ;mov edi, [digit_count]
+    ;call print_number
 
-    mov rsi, msg_lower
-    call print_message
-    mov rdi, [lower_count]
-    call print_number
+    ;mov rsi, msg_lower
+    ;call print_message
+    ;mov rdi, [lower_count]
+    ;call print_number
 
-    mov rsi, msg_upper
-    call print_message
-    mov rdi, [upper_count]
-    call print_number
+    ;mov rsi, msg_upper
+    ;call print_message
+    ;mov rdi, [upper_count]
+    ;call print_number
 
-    mov rsi, msg_other
-    call print_message
-    mov rdi, [other_count]
-    call print_number
+    ;mov rsi, msg_other
+    ;call print_message
+    ;mov rdi, [other_count]
+    ;call print_number
 
-    call print_new_line  ; ✅ Добавляем новую строку
+    ;call print_new_line  ; ✅ Добавляем новую строку
 
     inc qword [num_line]  ; ✅ Увеличиваем номер строки
     pop rsi
@@ -272,8 +268,8 @@ process_file:
     syscall
 
 .exit:
-    mov rsi, msg_exit_process
-    call print_message
+    ;mov rsi, msg_exit_process
+    ;call print_message
 
     pop rbx
 
@@ -489,26 +485,26 @@ print_results:
 
 section .data
     newline db 0x0A
-    msg_digits db " Цифры=", 0
-    msg_lower  db " строчные=", 0
-    msg_upper  db " заглавные=", 0
-    msg_other  db " другие=", 0
+    msg_digits db ": Digits = ", 0
+    msg_lower  db ", small letters = ", 0
+    msg_upper  db ", capital letters = ", 0
+    msg_other  db ", other = ", 0
     msg_r_set db "Флаг -r установлен", 0x0A, 0
     msg_r_not_set db "Флаг -r не установлен", 0x0A, 0
     msg_h_set db "Флаг -h установлен", 0x0A, 0
     msg_h_not_set db "Флаг -h не установлен", 0x0A, 0
-    msg_no_args db "Аргументов нет", 0x0A, 0
-    msg_error_code db "Код ошибки: ", 0
+    msg_no_args db "No arguments", 0x0A, 0
+    msg_error_code db "Error: ", 0
     msg_end db "Завершение print_flags", 0x0A, 0
     msg_newline db 0x0A, 0
     msg_user db "Золотая чаша, золотааааааяяяяя", 0x0A, 0
-    msg_line_num db "Номер строки: ", 0
+    msg_line_num db "Line number #", 0
     msg_colon db ": ", 0
     msg_debug db "🛠 Вызов print_line", 0x0A, 0  ; 🛠 Отладочный вывод
     num_line dq 0
     msg_exit_process db "Выход из process_file", 0x0A, 0
-    msg_press_enter db "Нажмите Enter для продолжения...", 0x0A, 0
-    msg_help db "Использование: program [флаги] file.txt", 0x0A
-         db "-r  : Вывод строк в обратном порядке", 0x0A
-         db "-p  : Постраничный вывод (по 10 строк)", 0x0A
-         db "-h  : Показать справку и выйти", 0x0A, 0
+    msg_press_enter db "Press Enter to continue...", 0x0A, 0
+    msg_help db "Run: program [flags] file.txt [flags]", 0x0A
+         db "-r  : Output in reverse order", 0x0A
+         db "-p  : Page output (10 lines each)", 0x0A
+         db "-h  : Help", 0x0A, 0

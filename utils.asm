@@ -1,7 +1,7 @@
 global msg_file_error, msg_file_found
 
 section .data
-msg_file_error db "Ошибка: файл не найден", 0x0A, 0
+msg_file_error db "Error: file dont found", 0x0A, 0
 msg_file_found db "Файл найден", 0x0A, 0
 msg_newline db 0x0A, 0  ; Символ новой строки
 
