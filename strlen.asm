@@ -1,15 +1,32 @@
+;<=============================================================>;
+;								;
+;			Function: strlen			;
+;								;
+;								;
+; Description:							;
+;   Calculates length of a null-terminated string.		;
+;								;
+;   Input: RDI = pointer to string				;
+;   Output: RAX = string length					;
+;								;
+;<=============================================================>;
+
+
 section .text
-    global strlen
+    global strlen		; Exporting the strlen function
+    					;	for other files
 
 strlen:
-    xor   rax, rax  ; Обнуляем rax
-    test  rdi, rdi  ; Проверяем, не 0 ли rdi
-    jz    .done     ; Если 0 — сразу выходим
+    xor   rax, rax  		; Clear length counter
+    test  rdi, rdi  		; rdi == 0?
+    jz    .done     		; Yes? -> return 0
+
 .loop:
-    cmp   byte [rdi], 0  ; Конец строки?
-    je    .done
-    inc   rdi       ; Двигаем указатель вперёд
-    inc   rax       ; Увеличиваем счётчик
-    jmp   .loop
+    cmp   byte [rdi], 0		; End of string?
+    je    .done			; Yes? -> exit
+    inc   rdi			; Move to next char
+    inc   rax			; Increment counter
+    jmp   .loop			; Repeat
+
 .done:
-    ret
+    ret				; Return length in RAX

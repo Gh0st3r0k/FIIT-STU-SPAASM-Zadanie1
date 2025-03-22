@@ -1,510 +1,604 @@
+;<=============================================================>;
+;								;
+;			File: lib.asm				;
+;								;
+;								;
+; Description:							;
+;   Core logic of the program:					;
+;   - Argument parsing (parse_args)				;
+;   - File processing (process_file)				;
+;   - Results printing (print_results, show_total)		;
+;								;
+;<=============================================================>;
+
+
+
+;----------------- SECTION: Uninitialized Data -----------------;
+
 section .bss
-    global fd, num_line
-    global digit_counts, lower_counts, upper_counts, other_counts
-    global flag_r, flag_h  ; Флаги -r и -h
 
-    fd          resq 1
-    ;num_line    resq 1
+    fd          resq 1		; File descriptor
 
+    ; Total counters across all lines
+    total_digits resq 1
+    total_lower  resq 1
+    total_upper  resq 1
+    total_other  resq 1
+
+    ; Per-line counts (arrays)
     digit_counts resq 4096
     lower_counts resq 4096
     upper_counts resq 4096
     other_counts resq 4096
 
-    flag_r  resb 1  ; Флаг -r
-    flag_h  resb 1  ; Флаг -h
-    flag_p resb 1  ; ✅ Флаг постраничного вывода
+    ; Flags from command line
+    flag_h  resb 1              ; -h : help
+    flag_r  resb 1		; -r : reverse order
+    flag_p  resb 1		; -p : pagination
 
-    global buffer
-    buffer resb 4096
+    buffer resb 4096		; Buffer for reading file
+
+
+
+
+;----------------------- SECTION: Code -------------------------;
 
 section .text
-global print_args, process_file, print_flags, print_results
-extern print_new_line, print_message, print_number, analyze_line, msg_file_error, msg_file_found
-extern digit_count, lower_count, upper_count, other_count
-extern strlen
+%include "macros.inc"
 
-print_args:
 
-    push rbp
-    mov rbp, rsp
+;---------- Externals: Data ----------;
 
+extern msg_help, msg_no_args		; from data.asm
+extern msg_error_code, msg_file_error	; from data.asm
+extern msg_line_num, msg_digits		; from data.asm
+extern msg_lower, msg_upper, msg_other	; from data.asm
+extern msg_total, msg_press_enter	; from data.asm
+extern num_line				; from data.asm
+
+extern digit_count, lower_count		; from analyze_line.asm
+extern upper_count, other_count		; from analyze_line.asm
+
+;---------- Externaks: Function ----------;
+
+extern print_message, print_new_line	; from utils.asm
+extern print_number			; from print_number
+extern analyze_line			; from analyze_line.asm
+
+
+;---------- Global ----------;
+
+global parse_args, print_results	; Exporting functions
+
+
+
+
+
+
+
+
+;<=============================================================>;
+;								;
+;			Function: parse_args			;
+;								;
+;								;
+; Description:							;
+;   Parses command-line arguments and sets global flags.	;
+;   Calls `process_file` if a filename is found.		;
+;   Shows help and exits if '-h' is specified.			;
+;								;
+; Input:							;
+;   rdi = argc							;
+;   rsi = argv							;
+;								;
+;<=============================================================>;
+
+parse_args:
+
+    push rbp			; Save previous base pointer
+    mov rbp, rsp		; Set up current base pointer
+
+    ; Initialising flags to 0
     mov byte [flag_r], 0
-    mov byte [flag_h], 0
+    mov byte [flag_p], 0
 
-    mov rcx, rdi   ; Количество аргументов (argc)
-    dec rcx        ; Убираем имя программы
-    jz .no_args    ; Если нет аргументов — вывести сообщение
+    mov rcx, rdi		; Copy argument count (argc)
+    						;	to RCX
+    dec rcx        		; Skip program name
+    jz .no_args			; If no arguments - print
+    					;     a warning message
 
-    mov rbx, rsi   ; Указатель на список аргументов
+    mov rbx, rsi		; Copy pointer to argv
+    						; array into RBX
+
 
 .next_arg:
-    add rbx, 8     ; Переходим к следующему аргументу
-    mov rax, [rbx] ; Загружаем аргумент
-    cmp rax, 0
-    je .done       ; Если аргументов больше нет — завершаем
 
-    mov rdi, rax
-    mov dl, [rdi]
-    cmp dl, '-'    ; Проверяем, является ли аргумент флагом
-    jne .process_file  ; Если нет, значит, это имя файла
+    add rbx, 8			; Move on to the next argument
+    mov rax, [rbx]		; Load the argument
+    cmp rax, 0			; rax == NULL (end of args)?
+    je .done_flags       	; Yes? -> exit
+
+    mov rdi, rax		; Copy pointer to string into RDI
+    mov dl, [rdi]		; Load first character
+    						; of the argument
+    cmp dl, '-'			; Check if the argument is a flag
+    jne .process_file		; No? -> this is filename
 
 
-    add rdi, 1
-    cmp byte [rdi], 'r'
-    je .set_r_flag
-    cmp byte [rdi], 'h'
-    je .set_h_flag
-    cmp byte [rdi], 'p'
-    je .set_p_flag
-    jmp .skip_print
+    ; Checking which flag it is
+    add rdi, 1			; Move to second character
+    					;     (actual flag char)
+    cmp byte [rdi], 'r'		; Is it '-r'?
+    je .set_r_flag		; Yes? -> set global r flag
+    cmp byte [rdi], 'h'		; Is it '-h'?
+    je .h_flag			; Yes? -> help message
+    cmp byte [rdi], 'p'		; Is it '-p'?
+    je .set_p_flag		; Yes? -> set global p flag
+    jmp .skip_flag		; No? -> skip it
 
 .set_r_flag:
-    mov byte [flag_r], 1
-    jmp .skip_print
+    mov byte [flag_r], 1	; Enable reverse output
+    jmp .skip_flag		; Move to next argument
 
-.set_h_flag:
-    mov byte [flag_h], 1
-    jmp .help_message
+.h_flag:
+    mov byte [flag_h], 1	; Enable help output
+    jmp .help_message		; Move to help message
 
 .set_p_flag:
-    mov byte [flag_p], 1
-    jmp .skip_print
+    mov byte [flag_p], 1	; Enable pagination
+    jmp .skip_flag		; Move to next argument
 
 .process_file:
-    mov rsi, rax  ; Передаём имя файла в rsi
-    call process_file  ; Обрабатываем файл
-    jmp .skip_print
+    mov rsi, rax		; Pass filename to rsi
+    call process_file		; Processing the file
+    jmp .skip_flag		; Move to next argument
 
 .help_message:
-    mov rsi, msg_help  ; ✅ Выводим help
-    call print_message
-    mov rax, 60        ; ✅ sys_exit
-    xor rdi, rdi
-    syscall            ; ✅ Завершаем программу
-
-.done:
-    jmp .print_flags
+    PRINT_MSG msg_help		; Display help message
+    mov rax, 60			; sys_exit
+    xor rdi, rdi		; exit code = 0
+    syscall			; Terminate program
 
 .no_args:
-    mov rsi, msg_no_args
-    jmp .done_flags
+    PRINT_MSG msg_no_args	; Print "No arguments"
+    jmp .done_flags		; exit
 
-.skip_print:
-    dec rcx
-    ;mov rbx, rsi
-    jmp .next_arg
+.skip_flag:
+    dec rcx			; Decrement remaining arguments
+    jmp .next_arg		; Move to next argument
 
-
-.print_flags:
-    mov rbp, rsp   ; <-- Убираем `push rbp`, так как он уже был в `print_args`
-
-    ; Проверяем флаг -r
-    mov al, [flag_r]
-    cmp al, 0
-    jne .flag_r_is_set
-    mov rsi, msg_r_not_set
-    jmp .print_flag_res
-
-.flag_r_is_set:
-    mov rsi, msg_r_set
-
-.print_flag_res:
-    ;call print_message
-
-    ; Проверяем флаг -h (только один раз!)
-    mov al, [flag_h]
-    cmp al, 0
-    jne .flag_h_is_set
-    mov rsi, msg_h_not_set
-    jmp .done_flags
-
-.flag_h_is_set:
-    mov rsi, msg_h_set
 
 .done_flags:
-    ;call print_message
     
-    pop rbp   ; <-- ЧЁТКО ВОССТАНАВЛИВАЕМ СТЕК
-    ret       ; <-- ТЕПЕРЬ НЕ УПАДЁТ
+    pop rbp			; Restore base pointer
+    ret				; Return to caller
 
+
+
+
+
+
+
+
+
+
+
+;<=============================================================>;
+;								;
+;			Function: process_file			;
+;								;
+;								;
+; Description:							;
+;   Opens and reads the file, analyzes each line,		;
+;   and stores per-line and total statistics.			;
+;   Calls `analyze_line` on each line.				;
+;								;
+; Input:							;
+;   rsi = pointer to filename					;
+;								;
+;<=============================================================>;
 
 process_file:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 16
 
-    ; Выводим имя файла перед открытием (ОТЛАДКА)
-    ;mov rdi, rsi
-    ;call print_message
-    ;call print_new_line
-    ;mov rsi, msg_newline
-    ;call print_message
-    ;mov rsi, rdi  
+    push rbp			; Save previous base pointer
+    mov rbp, rsp		; Set up current base pointer
+    sub rsp, 16			; Allocate 16 bytes of the stack
 
-    ; Открываем файл на чтение
-    mov rdi, rsi  ; Имя файла уже в rsi
-    mov rax, 2    ; sys_open
-    mov rsi, 0    ; Только для чтения
-    syscall
+    ; Open the file for reading
+    mov rdi, rsi		; Copy the file name to rdi
+    mov rax, 2			; syscall: sys_open
+    mov rsi, 0			; Opening mode: read-only
+    						;    (O_RDONLY)
+    syscall			; call
+    				;   sys_open(filename, O_RDONLY)
 
-    ; Проверяем, открылся ли файл
-    cmp rax, 0
-    jl .file_error  ; Если ошибка, вывести сообщение
 
-    mov [fd], rax
-    jmp .success
+    ; Check if the file is open
+    cmp rax, 0			; rax < 0?
+    jl .file_error		; Yes? -> error
+
+    mov [fd], rax		; Save the file descriptor
+    					;  in a global variable
+    jmp .success		; Move to a reading cycle
+
+
 
 .file_error:
-    mov rsi, msg_error_code
-    call print_message
-    mov rdi, rax  ; Код ошибки
-    call print_number  ; Выведем его
-    call print_new_line
-    mov rsi, msg_file_error
-    call print_message
-    jmp .exit
+    
+    PRINT_MSG msg_error_code	; Print "Error: "
+    PRINT_NUM rax		; Print error code (from rax)
+    
+    call print_new_line		; New line
+    
+    PRINT_MSG msg_file_error	; Print "file not found"
+
+    add rsp, 16			; Releasing the stack
+    pop rbp			; Restore base pointer
+    jmp .exit			; Exit
+
 
 .success:
-    push rbx
-
-    ;mov rsi, msg_file_found
-    ;call print_message  ; Выводим "Файл найден"
-
-    ;mov qword [num_line], 0  ; Номер строки = 0
+    push rbx			; Save the rbx register (we will
+    				; use it as a pointer to the
+				; beginning of the string)
+    
 
 .read_loop:
-    ; Читаем из файла в buffer
-    mov rdi, [fd]
-    mov rsi, buffer
-    mov rdx, 396
-    mov rax, 0
-    syscall
-    cmp rax, 0
-    jle .close_file  ; Если конец файла, закрываем
 
-    mov rsi, buffer
-    mov rbx, rsi  ; rbx = начало строки
+    ; Read from file to buffer
+    mov rdi, [fd]		; First argument: file descriptor
+    mov rsi, buffer		; Second argument: read buffer
+    mov rdx, 4096		; Third argument: how many bytes
+    							; to read
+    mov rax, 0			; sys_read
+    syscall			; read: read(fd, buffer, 4096)
+    cmp rax, 0			; rax > 0?
+    jle .close_file		; No? -> exit
+
+    mov rsi, buffer		; rsi - current char (pointer)
+    mov rbx, rsi		; rbx = start of line
+
 
 .next_char:
-    mov al, [rsi]
-    cmp al, 0
-    je .done_processing  ; Если дошли до конца буфера, выходим
 
-    cmp al, 10  ; '\n' (конец строки?)
-    je .print_line
+    mov al, [rsi]		; Load the current char
+    cmp al, 0			; al == 0?
+    je .done_processing		; Yes? -> buffer end, exit
 
-    inc rsi
-    jmp .next_char
+    cmp al, 10			; al == 10 ('\n')?
+    je .process_line		; Yes? -> process a string
 
-.print_line:
+    inc rsi			; No? -> forward on the buffer
+    jmp .next_char		; Repeat
 
-    push rsi
-    mov byte [rsi], 0  ; Заменяем '\n' на 0 (конец строки)
 
-    mov rsi, rbx
-    call analyze_line
+.process_line:
 
-    mov rdi, [num_line]
-    mov rdx, qword [digit_count]
-    mov rcx, qword [lower_count]
-    mov r8,  qword [upper_count]
-    mov r9,  qword [other_count]
+    push rsi			; Save the current pointer
+    mov byte [rsi], 0		; Replace '\n' by 0 (end of line)
 
+    mov rsi, rbx		; rbx - pointer to start of line
+    call analyze_line		; Call analysis of the 
+    						; current string
+
+    mov rdi, [num_line]		  ; Get the current line number
+    mov rdx, qword [digit_count]  ; Number of digits per line
+    mov rcx, qword [lower_count]  ; Number of lowercase letters
+    mov r8,  qword [upper_count]  ; Number of capital letters
+    mov r9,  qword [other_count]  ; Number of other chars
+
+    ; Save by index for the string
     mov [digit_counts + rdi*8], rdx
     mov [lower_counts + rdi*8], rcx
     mov [upper_counts + rdi*8], r8
     mov [other_counts + rdi*8], r9
 
+    ; Updating the summary statistics
+    add [total_digits], rdx
+    add [total_lower], rcx
+    add [total_upper], r8
+    add [total_other], r9
 
-    ; Выводим "Номер строки: строка"
-    ;mov rsi, msg_line_num
-    ;call print_message
+    inc qword [num_line]	; Increase the line number
+    pop rsi			; Restore the pointer
 
-    ;mov rdi, [num_line]  ; ✅ Выводим номер строки
-    ;call print_number
 
-    ;mov rsi, msg_digits
-    ;call print_message
-    ;mov edi, [digit_count]
-    ;call print_number
-
-    ;mov rsi, msg_lower
-    ;call print_message
-    ;mov rdi, [lower_count]
-    ;call print_number
-
-    ;mov rsi, msg_upper
-    ;call print_message
-    ;mov rdi, [upper_count]
-    ;call print_number
-
-    ;mov rsi, msg_other
-    ;call print_message
-    ;mov rdi, [other_count]
-    ;call print_number
-
-    ;call print_new_line  ; ✅ Добавляем новую строку
-
-    inc qword [num_line]  ; ✅ Увеличиваем номер строки
-    pop rsi
 .next_line:
-    inc rsi           ; ✅ Двигаемся вперёд
-    cmp byte [rsi], 0 ; ✅ Пока `rsi` указывает на `\0`
-    je .next_line     ; ✅ Пропускаем все `\0`
+    
+    inc rsi			; Moving forward
+    cmp byte [rsi], 0		; 'rsi' == '\0'?
+    je .next_line		; Yes? -> repeat
 
-    test rsi, rsi
-    jz .done_processing  ; ✅ Если `rsi == 0`, значит файл закончился
+    test rsi, rsi		; rsi == 0?
+    jz .done_processing		; Yes? -> file end
 
-    mov rbx, rsi  ; ✅ Обновляем начало новой строки
-    jmp .next_char
+    mov rbx, rsi		; Updating the beginning of 
+    						; a new line
+    jmp .next_char		; Go to the next line
+
 
 .done_processing:
-    jmp .read_loop  ; ✅ Читаем следующий кусок данных
+    jmp .read_loop		; Read the following
+    						; piece of data
+
 
 .close_file:
-    mov rdi, [fd]
-    mov rax, 3
-    syscall
+    mov rdi, [fd]		; File descriptor
+    mov rax, 3			; sys_close
+    syscall			; Close the file
 
 .exit:
-    ;mov rsi, msg_exit_process
-    ;call print_message
-
-    pop rbx
-
-
-    leave
-    ;add rsp, 32
-    ;pop rbp
-    ret
+    pop rbx			; Restore the saved register
+    leave			; Simplified equivalent:
+    						; mov rsp,
+						; rbp → pop rbp
+    ret				; Return to caller
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+;<=============================================================>;
+;								;
+;			Function: print_results			;
+;								;
+;								;
+; Description:							;
+;   Displays per-line statistics for all lines,			;
+;   in normal or reverse order depending on flag_r.		;
+;   If flag_p is set, paginates output (10 lines per screen).	;
+;   Then calls show_total.					;
+;								;
+;<=============================================================>;
 
 print_results:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 16
 
-    mov r8, 0
+    push rbp			; Save previous base pointer
+    mov rbp, rsp		; Set up current base pointer
+    sub rsp, 16			; Allocate 16 bytes of the stack
 
-    cmp byte [flag_h], 1
-    je .done
+    mov r8, 0			; r8 will be used as a line
+    				; count on the current page 
+						;     (for -p)
 
-    cmp byte [flag_r], 1
-    je .reverse_order
 
-.forward_order:
-    mov rcx, 0
+    cmp byte [flag_h], 1	; 'flag_h' == 1?
+    je .done			; Yes? -> skip prints
+
+    cmp byte [flag_r], 1	; 'flag_r' == 1?
+    je .reverse_order		; Yes? -> revers print
+
+.forward_order:			; No? -> forward print
+    mov rcx, 0			; rcx will be the current
+    				  ; line number (index in
+				  ; statistics arrays)
+
 
 .forward_loop:
-    cmp rcx, [num_line]  ; ✅ Проверяем, не вышли ли за число строк
-    jge .done
 
-    push rcx
-    ; ✅ Выводим "Номер строки %d:"
-    mov rsi, msg_line_num
-    call print_message
-    pop rcx
-    push rcx
+    ; Check if the number of rows is not exceeded
+    cmp rcx, [num_line]		; rcx >= num_line?
+    jge .forward_done		; Yes? -> finished output
+
+    PRINT_MSG msg_line_num	; Print "Line number #"
     mov rdi, rcx
-    inc rdi  ; ✅ Нумерация строк с 1
-    call print_number
-    pop rcx
+    inc rdi			; Increase by 1 (so that row #1,
+    							; not #0)
+    PRINT_NUM rdi		; Print line number
 
-    push rcx
-    ; ✅ Выводим "Цифры = %d,"
-    mov rsi, msg_digits
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [digit_counts + rcx * 8]
-    call print_number
-    pop rcx
 
-    push rcx
-    ; ✅ Выводим "строчные = %d,"
-    mov rsi, msg_lower
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [lower_counts + rcx * 8]
-    call print_number
-    pop rcx
+    ; Print the number of digits
+    PRINT_MSG msg_digits
+    PRINT_NUM [digit_counts + rcx * 8]
 
-    push rcx
-    ; ✅ Выводим "заглавные = %d,"
-    mov rsi, msg_upper
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [upper_counts + rcx * 8]
-    call print_number
-    pop rcx
 
-    push rcx
-    ; ✅ Выводим "другие = %d"
-    mov rsi, msg_other
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [other_counts + rcx * 8]
-    call print_number
+    ; Printing of lowercase letters
+    PRINT_MSG msg_lower
+    PRINT_NUM [lower_counts + rcx * 8]
 
-    call print_new_line  ; ✅ Переход на новую строку
 
-    pop rcx
+    ; Printing of capital letters
+    PRINT_MSG msg_upper
+    PRINT_NUM [upper_counts + rcx * 8]
 
-    inc rcx
-    inc r8
 
-    cmp byte [flag_p], 1
-    jne .forward_loop
+    ; Print the remaining characters
+    PRINT_MSG msg_other
+    PRINT_NUM [other_counts + rcx * 8]
 
-    cmp rcx, [num_line]  ; ✅ Проверяем, не вышли ли за число строк
-    jge .done
+    
+    push rcx			; Save to avoid losing
+    						; the rcx data
+    call print_new_line		; Move to a new line
+    pop rcx			; Return rcx value
 
-    cmp r8, 10
-    jne .forward_loop
+    inc rcx			; Move to the next line
+    inc r8			; Increase the line count
+    					;    per page (for -p)
 
-    push rcx
-    mov rsi, msg_press_enter
-    call print_message
-    pop rcx
 
-    push rcx
-    mov rax, 0
-    mov rdi, 0
-    mov rsi, buffer
-    mov rdx, 1
-    syscall
-    pop rcx
+    cmp byte [flag_p], 1	; 'flag_p' == 1?
+    jne .forward_loop		; No? -> skip checking
 
-    mov r8, 0
+    
+    ; Check if the number of lines in one page is not exceeded
 
-    jmp .forward_loop
+    cmp rcx, [num_line]		; rcx >= num_line?
+    jge .forward_done           ; Yes? -> finished output
 
+    ; Are there 10 lines printed?
+    cmp r8, 10			; r8 == 10?
+    jne .forward_loop		; No? -> continue to output
+    						;    the lines
+
+    PRINT_MSG msg_press_enter	; Message to user: press Enter
+
+    push rcx			; Save loop index (rcx)
+    						; before syscall
+    mov rax, 0			; syscall: sys_read
+    mov rdi, 0			; file descriptor: stdin
+    mov rsi, buffer		; buffer to store 1 char
+    mov rdx, 1			; read 1 byte
+    syscall			; wait for user input
+    pop rcx			; Restore loop index
+    						; after syscall
+
+    mov r8, 0			; Reset the line count
+    						; on a new page
+
+    jmp .forward_loop		; Move to continue output
+
+
+.forward_done:
+
+    call show_total		; Output total statistics 
+    						; for all rows
+    jmp .done			; Exit
 
 .reverse_order:
-    mov rcx, [num_line]
-    dec rcx
+
+    call show_total		; First, we also display the
+    			    		  ;    summary statistics
+    call print_new_line		; Print new line
+    mov rcx, [num_line]		; Set the index to the last line
+    dec rcx			; Since the lines are counted
+    				  ; from 0 → 
+				  ; last line = num_line - 1
 
 .reverse_loop:
-    cmp rcx, -1  ; ✅ Проверяем, не вышли ли за число строк
-    jle .done
 
-    push rcx
-    ; ✅ Выводим "Номер строки %d:"
-    mov rsi, msg_line_num
-    call print_message
-    pop rcx
-    push rcx
+    ; If we've reached the beginning, we're done
+    cmp rcx, -1			; rcx <= -1?
+    jle .done			; Yes? -> finished output
+
+
+    PRINT_MSG msg_line_num      ; Print "Line number #"
     mov rdi, rcx
-    inc rdi  ; ✅ Нумерация строк с 1
-    call print_number
-    pop rcx
+    inc rdi                     ; Increase by 1 (so that row #1,
+                                                        ; not #0)
+    PRINT_NUM rdi               ; Print line number
 
-    push rcx
-    ; ✅ Выводим "Цифры = %d,"
-    mov rsi, msg_digits
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [digit_counts + rcx * 8]
-    call print_number
-    pop rcx
-    push rcx
-    ; ✅ Выводим "строчные = %d,"
-    mov rsi, msg_lower
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [lower_counts + rcx * 8]
-    call print_number
-    pop rcx
 
-    push rcx
-    ; ✅ Выводим "заглавные = %d,"
-    mov rsi, msg_upper
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [upper_counts + rcx * 8]
-    call print_number
-    pop rcx
+    ; Print the number of digits
+    PRINT_MSG msg_digits
+    PRINT_NUM [digit_counts + rcx * 8]
 
-    push rcx
-    ; ✅ Выводим "другие = %d"
-    mov rsi, msg_other
-    call print_message
-    pop rcx
-    push rcx
-    mov rdi, [other_counts + rcx * 8]
-    call print_number
 
-    call print_new_line  ; ✅ Переход на новую строку
+    ; Printing of lowercase letters
+    PRINT_MSG msg_lower
+    PRINT_NUM [lower_counts + rcx * 8]
 
-    pop rcx 
-    dec rcx
-    inc r8
 
-    cmp byte [flag_p], 1
-    jne .reverse_loop
+    ; Printing of capital letters
+    PRINT_MSG msg_upper
+    PRINT_NUM [upper_counts + rcx * 8]
 
-    cmp rcx, -1  ; ✅ Проверяем, не вышли ли за число строк
-    jle .done
 
-    cmp r8, 10
-    jne .reverse_loop
+    ; Print the remaining characters
+    PRINT_MSG msg_other
+    PRINT_NUM [other_counts + rcx * 8]
 
-    push rcx
-    mov rsi, msg_press_enter
-    call print_message
-    pop rcx
 
-    push rcx
-    mov rax, 0
-    mov rdi, 0
-    mov rsi, buffer
-    mov rdx, 1
-    syscall
-    pop rcx
+    push rcx                    ; Save to avoid losing
+                                                ; the rcx data
+    call print_new_line         ; Move to a new line
+    pop rcx                     ; Return rcx value
 
-    mov r8, 0
+    dec rcx                     ; Move to the next line
+    inc r8                      ; Increase the line count
+                                        ;    per page (for -p)
 
-    jmp .reverse_loop
+
+    cmp byte [flag_p], 1        ; 'flag_p' == 1?
+    jne .reverse_loop           ; No? -> skip checking
+
+     ; Check if the number of lines in one page is not exceeded
+
+    cmp rcx, -1         	; rcx <= -1?
+    jle .done			; Yes? -> finished output
+
+    ; Are there 10 lines printed?
+    cmp r8, 10                  ; r8 == 10?
+    jne .reverse_loop           ; No? -> continue to output
+                                                ;    the lines
+
+    PRINT_MSG msg_press_enter   ; Message to user: press Enter
+
+    push rcx                    ; Save loop index (rcx)
+                                                ; before syscall
+    mov rax, 0                  ; syscall: sys_read
+    mov rdi, 0                  ; file descriptor: stdin
+    mov rsi, buffer             ; buffer to store 1 char
+    mov rdx, 1                  ; read 1 byte
+    syscall                     ; wait for user input
+    pop rcx                     ; Restore loop index
+                                                ; after syscall
+
+    mov r8, 0                   ; Reset the line count
+                                                ; on a new page
+
+    jmp .reverse_loop           ; Move to continue output
+
 
 .done:
-    add rsp, 16
-    pop rbp
-    ret
+    add rsp, 16			; Clear the stack
+    pop rbp			; Restore base pointer
+    ret				; Return to caller
 
 
 
-section .data
-    newline db 0x0A
-    msg_digits db ": Digits = ", 0
-    msg_lower  db ", small letters = ", 0
-    msg_upper  db ", capital letters = ", 0
-    msg_other  db ", other = ", 0
-    msg_r_set db "Флаг -r установлен", 0x0A, 0
-    msg_r_not_set db "Флаг -r не установлен", 0x0A, 0
-    msg_h_set db "Флаг -h установлен", 0x0A, 0
-    msg_h_not_set db "Флаг -h не установлен", 0x0A, 0
-    msg_no_args db "No arguments", 0x0A, 0
-    msg_error_code db "Error: ", 0
-    msg_end db "Завершение print_flags", 0x0A, 0
-    msg_newline db 0x0A, 0
-    msg_user db "Золотая чаша, золотааааааяяяяя", 0x0A, 0
-    msg_line_num db "Line number #", 0
-    msg_colon db ": ", 0
-    msg_debug db "🛠 Вызов print_line", 0x0A, 0  ; 🛠 Отладочный вывод
-    num_line dq 0
-    msg_exit_process db "Выход из process_file", 0x0A, 0
-    msg_press_enter db "Press Enter to continue...", 0x0A, 0
-    msg_help db "Run: program [flags] file.txt [flags]", 0x0A
-         db "-r  : Output in reverse order", 0x0A
-         db "-p  : Page output (10 lines each)", 0x0A
-         db "-h  : Help", 0x0A, 0
+
+
+
+
+
+
+
+;<=============================================================>;
+;								;
+;			Function: show_total			;
+;								;
+;								;
+; Description:							;
+;   Displays the total number of digits, lowercase,		;
+;   uppercase, and other characters across all lines.		;
+;								;
+;<=============================================================>;
+
+show_total:
+
+    call print_new_line		; Output an empty line before
+    					; the summary statistics
+    
+    PRINT_MSG msg_total		; Print:
+    				    ; 'Total across all lines'
+    
+    ; Print the total number of digits in all lines
+    PRINT_MSG msg_digits
+    PRINT_NUM [total_digits]
+
+    ; Total number of lowercase letters
+    PRINT_MSG msg_lower
+    PRINT_NUM [total_lower]
+
+    ; Total number of capital letters
+    PRINT_MSG msg_upper
+    PRINT_NUM [total_upper]
+
+    ; Total number of other characters
+    PRINT_MSG msg_other
+    PRINT_NUM [total_other]
+
+    call print_new_line		; New line after the final block
+
+    ret				; Return to caller
