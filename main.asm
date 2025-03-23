@@ -34,6 +34,11 @@
 ;   ld main.o lib.o data.o analyze_line.o utils.o strlen.o 	;
 ;	print_number.o -o program				;
 ;								;
+; Running (Example):						;
+; ./program -h							;
+; ./program testFile.txt -r -p					;
+; ./program -p testFile1.txt -r testFile2.txt			;
+;								;
 ;								;
 ; Project Files:                                                ;
 ; - main.asm           : Entry point, calls argument parser     ;
