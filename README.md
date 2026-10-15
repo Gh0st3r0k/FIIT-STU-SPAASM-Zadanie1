@@ -1,19 +1,41 @@
-![ASCII Analyzer — text, down to the byte](docs/cover.svg)
+<h1 align="center">SPAASM · ASCII Analyzer</h1>
 
-# ASCII Analyzer
+<p align="center">
+  <strong>Character statistics, written in x86-64 assembly.</strong>
+</p>
 
-An ASCII character counter written in **x86-64 assembly** for Linux. Reads text files, counts four character classes for each line, and prints totals across the input — using Linux system calls directly, without a C runtime.
+<p align="center">
+  Count digits, letters, and other ASCII characters with a native Linux command-line program.
+</p>
 
-**[Quick start](#quick-start) · [Example](#example) · [Inside the project](#inside-the-project) · [Companion project ↗](https://github.com/Gh0st3r0k/FIIt-STU-SPAASM-Zadanie2)**
+<p align="center">
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#limitations">Limitations</a>
+</p>
 
-## What it does
+<p align="center">
+  <img src="https://img.shields.io/badge/NASM-x86--64-3178C6?style=flat-square" alt="NASM · x86-64">
+  <img src="https://img.shields.io/badge/Platform-Linux-FCC624?style=flat-square" alt="Platform: Linux">
+  <img src="https://img.shields.io/badge/FIIT_STU-SPAASM-555555?style=flat-square" alt="FIIT STU · SPAASM">
+  <img src="https://img.shields.io/badge/Assignment-1-555555?style=flat-square" alt="Assignment 1">
+</p>
 
-- Counts digits, lowercase letters, uppercase letters, and other characters.
-- Reports per-line statistics and totals across input files.
-- Supports reverse line order with `-r` and pagination with `-p`.
-- Keeps input processing, counting, and number formatting in separate assembly modules.
+---
 
-## Quick start
+## Overview
+
+This is the first assignment for the **SPAASM course at FIIT STU**. It uses **NASM and the Linux syscall interface** to analyze ASCII text without a C runtime.
+
+| Feature | What you can do |
+| :--- | :--- |
+| Character counts | Count digits, lowercase letters, uppercase letters, and other characters. |
+| Line statistics | Inspect each line and totals across input files. |
+| Reverse order | Read line statistics from last to first with `-r`. |
+| Pagination | Pause after every 10 lines with `-p`. |
+
+## Getting started
 
 Requires **Linux x86-64**, **NASM**, and **GNU ld** (Binutils). Run these commands from the repository root:
 
@@ -26,7 +48,7 @@ ld main.o lib.o data.o analyze_line.o utils.o strlen.o print_number.o -o program
 ./program -h
 ```
 
-## Example
+## Usage
 
 ```sh
 printf 'Ab1!\nz9\n' > /tmp/ascii-sample.txt
@@ -53,15 +75,7 @@ Total across all lines: Digits = 2, small letters = 2, capital letters = 1, othe
 ./program first.txt second.txt -p
 ```
 
-## Inside the project
-
-```mermaid
-flowchart LR
-    A[Arguments and flags] --> B[Read input files]
-    B --> C[Count character classes]
-    C --> D[Store line statistics]
-    D --> E[Print lines and totals]
-```
+## Development
 
 | File | Responsibility |
 | :--- | :--- |
@@ -74,11 +88,11 @@ flowchart LR
 
 The implementation brings together register-level string processing, ELF64 object files, manual integer formatting, and the Linux syscall interface.
 
-## Scope and limits
+## Limitations
 
 This is an educational ASCII text processor. Input uses LF (`\n`) line endings; Unicode character classification is outside its scope. The original assignment documents limits of 4,096 lines across input files and 4,095 characters per line. Use small ASCII files for demonstrations; these limits are not a guarantee of robust handling of oversized or malformed input.
 
-## About
+## Author
 
 **Kostiantyn Zaitsev · [@Gh0st3r0k](https://github.com/Gh0st3r0k)**
 
